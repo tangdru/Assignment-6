@@ -42,26 +42,34 @@ queue()
                 x0:centroid[0],
                 y0:centroid[1],
                 x:centroid[0],
-                y:centroid[1]
+                y:centroid[1],
+                r:scaleR((popByState.get(d.properties.STATE)).pop)
             }
         });
-        console.log(data);
 
 		var nodes = map.selectAll('.state')
-            .data(data, function(d){return d.state});
+            .data(data, function(d){
+                return d.state})
+            .enter()
+            .append('g')
+            .attr('class','state')
+            .attr('transform', function(d){
+                return 'translate('+ d.x +','+ d.y+')';
+            });
+        console.log(data);
+
 
         //Represent as a cartogram of populations
-        var nodesEnter = nodes.enter()
+        /*var nodesEnter = nodes.enter()
             .append('g')
             .attr('class','state');
         nodes.exit().remove();
 
-        nodes
-            .attr('transform',function(d){
+        nodes.attr('transform',function(d){
                 return 'translate('+d.x+','+d.y+')';
-            })
-        nodes
-            .append('circle')
+            })*/
+
+        nodes.append('circle')
             .attr('r',function(d){
                 var pop = (popByState.get(d.state)).pop;
                 return scaleR(pop);
@@ -71,8 +79,8 @@ queue()
                 return scaleColor(pct18Plus);
             })
             .style('fill-opacity',.7);
-        nodes
-            .append('text')
+
+        nodes.append('text')
             .text(function(d){
                 return d.name;
             })
@@ -80,10 +88,68 @@ queue()
 
         //TODO: create a force layout
         //with what physical parameters?
-        var force = d3.layout.force()
-        //on "tick" event ...
+        var force =d3.layout.force()
+            .size([width,height])
+            .charge(0)
+            .gravity(0.1);
 
-	});
+        force.nodes(data)
+            .start()
+            .on('tick',onForceTick)
+
+        function onForceTick(e){
+            var q = d3.geom.quadtree(data),
+                i = 0,
+                n = data.length;
+
+            while(++i<n){
+                q.visit(collide(data[i]));
+            }
+
+            nodes
+                .each(gravity(e.alpha *.1))
+                .each(collide(.1))
+                .attr('transform', function(d){
+                    return 'translate('+ d.x+','+d.y+')';
+                })
+
+            function gravity(k){
+                return function(d){
+                    d.y+=(d.y0 - d.y)*k;
+                    d.x+=(d.x0 - d.x)*k;
+                }
+            }
+
+            function collide(dataPoint){
+                var nr = dataPoint.radius + 5,
+                    nx1 = dataPoint.x - nr,
+                    ny1 = dataPoint.y - nr,
+                    nx2 = dataPoint.x + nr,
+                    ny2 = dataPoint.y +nr;
+
+                return function(quadPoint,x1,y1,x2,y2){
+                    if(quadPoint.point && (quadPoint.point !== dataPoint)){
+                        var x = dataPoint.x - quadPoint.point.x,
+                            y = dataPoint.y - quadPoint.point.y,
+                            l = Math.sqrt(x*x+y*y),
+                            r = nr + quadPoint.point.radius;
+                        if(l<r){
+                            i = (l-r)/l*.1;
+                            dataPoint.x -= x*= (1 *.05);
+                            dataPoint.y -= y*= 1;
+                            quadPoint.point.x += (x *.05);
+                            quadPoint.point.y += y;
+                        }
+
+                    }
+                    return x1>nx2 || x2<nx1 || y1>ny2 || y2<ny1;
+                }
+            }
+        }
+
+
+        }
+    );
 
 function parseData(d){
     //Use the parse function to populate the lookup table of states and their populations/% pop 18+
